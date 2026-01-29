@@ -213,20 +213,36 @@
         return { obj, basePos: obj.position.clone(), yCenter: center.y, targetPos: obj.position.clone() };
       }).sort((a,b) => a.yCenter - b.yCenter);
 
-      return out;
+      return candidates.map(obj => {
+  const box = new THREE.Box3().setFromObject(obj);
+  const center = new THREE.Vector3();
+  box.getCenter(center);
+  return {
+    obj,
+    restPos: obj.position.clone(),   // <- geschlossen (Original)
+    yCenter: center.y,
+    targetPos: obj.position.clone()
+  };
+}).sort((a,b) => a.yCenter - b.yCenter);
+
     }
 
-    function setExplodeTargets(open) {
-      if (!layers.length) return;
+function setExplodeTargets(open) {
+  if (!layers.length) return;
 
-      const mid = Math.floor(layers.length / 2);
+  const mid = Math.floor(layers.length / 2);
 
-      for (let i = 0; i < layers.length; i++) {
-        const d = i - mid; // middle: 0
-        const offsetY = open ? (d * explodeGap) : 0;
-        layers[i].targetPos = layers[i].basePos.clone().add(new THREE.Vector3(0, offsetY, 0));
-      }
+  for (let i = 0; i < layers.length; i++) {
+    const d = i - mid;
+    if (open) {
+      const offsetY = d * explodeGap;
+      layers[i].targetPos = layers[i].restPos.clone().add(new THREE.Vector3(0, offsetY, 0));
+    } else {
+      layers[i].targetPos = layers[i].restPos.clone(); // <- zurück zur Originalposition
     }
+  }
+}
+
 
     function startExplodeAnimation(open) {
       exploded = open;
@@ -237,17 +253,18 @@
       toggleExplodeBtn.textContent = open ? "Schichten schließen" : "Schichten aufklappen";
     }
 
-    function toggleExplode() {
-      if (!model) return;
+function toggleExplode() {
+  if (!model) return;
 
-      // (re-)collect layers each time to stay robust if model reloaded
-      layers = collectLayersFromModel(model);
+  // nur einmal sammeln (oder neu sammeln bei Reload)
+  if (!layers.length) layers = collectLayersFromModel(model);
 
-      // refresh base positions so repeated toggles don't drift
-      for (const L of layers) L.basePos = L.obj.position.clone();
+  // Für die Animation: Start ist immer die aktuelle Position
+  for (const L of layers) L.basePos = L.obj.position.clone();
 
-      startExplodeAnimation(!exploded);
-    }
+  startExplodeAnimation(!exploded);
+}
+
 
     function easeInOutCubic(x) {
       return x < 0.5 ? 4*x*x*x : 1 - Math.pow(-2*x + 2, 3) / 2;
