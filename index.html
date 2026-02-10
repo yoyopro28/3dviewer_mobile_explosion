@@ -59,7 +59,6 @@
 
     <label style="margin-top:1.4em;"><input type="checkbox" id="flyToggle">Flugmodus aktivieren</label>
 
-    <!-- NEW: explode button -->
     <button id="toggleExplode">Schichten aufklappen</button>
 
     <button id="resetPosition">Zurück zum Start</button>
@@ -72,7 +71,6 @@
       <button id="btnUp" style="width:48px;height:48px;border-radius:50%;background:#3fcf8e;color:#222;font-size:1.3em;">↑</button>
       <button id="btnDown" style="width:48px;height:48px;border-radius:50%;background:#3fcf8e;color:#222;font-size:1.3em;">↓</button>
       <button id="btnMenu" style="width:48px;height:48px;border-radius:50%;background:#222;color:#3fcf8e;font-size:1.08em;">≡</button>
-      <!-- OPTIONAL mobile explode button -->
       <button id="btnExplode" style="width:48px;height:48px;border-radius:50%;background:#222;color:#3fcf8e;font-size:0.95em;">⤢</button>
     </div>
   </div>
@@ -106,10 +104,10 @@
     let verticalInput = 0;
 
     // Explode / Layer animation
-    let layers = []; // [{ obj, basePos: Vector3, yCenter, targetPos }]
+    let layers = []; // [{ obj, restPos, basePos, targetPos }]
     let exploded = false;
     let explodeAnim = { active:false, t:0, duration:0.6 };
-    let explodeGap = 80; // adjust to taste (world units)
+    let explodeGap = 10; // adjust to taste (world units)
 
     // UI Elements
     const loadingSpinner = document.getElementById('loadingSpinner');
@@ -190,6 +188,12 @@
     }
 
     // ---- Explode helpers ----
+    function parseLayerIndex(name) {
+      // Accepts L_01, L_1, L_001, L_12, L_12.001 etc.
+      const m = /^L_(\d+)/.exec(name || "");
+      return m ? parseInt(m[1], 10) : Number.POSITIVE_INFINITY;
+    }
+
     function collectLayersFromModel(root) {
       // We ONLY take nodes that start with "L_" (your Blender naming)
       const candidates = [];
@@ -206,41 +210,33 @@
         });
       }
 
-      const out = candidates.map(obj => {
+      return candidates.map(obj => {
         const box = new THREE.Box3().setFromObject(obj);
         const center = new THREE.Vector3();
         box.getCenter(center);
-        return { obj, basePos: obj.position.clone(), yCenter: center.y, targetPos: obj.position.clone() };
-      }).sort((a,b) => a.yCenter - b.yCenter);
-
-      return candidates.map(obj => {
-  const box = new THREE.Box3().setFromObject(obj);
-  const center = new THREE.Vector3();
-  box.getCenter(center);
-  return {
-    obj,
-    restPos: obj.position.clone(),   // <- geschlossen (Original)
-    yCenter: center.y,
-    targetPos: obj.position.clone()
-  };
-}).sort((a,b) => a.yCenter - b.yCenter);
-
+        return {
+          obj,
+          restPos: obj.position.clone(),   // closed (original)
+          basePos: obj.position.clone(),
+          yCenter: center.y,
+          targetPos: obj.position.clone()
+        };
+      }).sort((a,b) => parseLayerIndex(a.obj.name) - parseLayerIndex(b.obj.name));
     }
 
-function setExplodeTargets(open) {
-  if (!layers.length) return;
+    function setExplodeTargets(open) {
+      if (!layers.length) return;
 
-  for (let i = 0; i < layers.length; i++) {
-    if (open) {
-      const offsetY = i * explodeGap; // nur nach oben, ab Layer 0
-      layers[i].targetPos = layers[i].restPos.clone().add(new THREE.Vector3(0, offsetY, 0));
-    } else {
-      layers[i].targetPos = layers[i].restPos.clone(); // zurück
+      for (let i = 0; i < layers.length; i++) {
+        if (open) {
+          // explode from L_01 upwards
+          const offsetY = i * explodeGap;
+          layers[i].targetPos = layers[i].restPos.clone().add(new THREE.Vector3(0, offsetY, 0));
+        } else {
+          layers[i].targetPos = layers[i].restPos.clone(); // back to original
+        }
+      }
     }
-  }
-}
-
-
 
     function startExplodeAnimation(open) {
       exploded = open;
@@ -251,18 +247,17 @@ function setExplodeTargets(open) {
       toggleExplodeBtn.textContent = open ? "Schichten schließen" : "Schichten aufklappen";
     }
 
-function toggleExplode() {
-  if (!model) return;
+    function toggleExplode() {
+      if (!model) return;
 
-  // nur einmal sammeln (oder neu sammeln bei Reload)
-  if (!layers.length) layers = collectLayersFromModel(model);
+      // collect once (or re-collect on reload)
+      if (!layers.length) layers = collectLayersFromModel(model);
 
-  // Für die Animation: Start ist immer die aktuelle Position
-  for (const L of layers) L.basePos = L.obj.position.clone();
+      // animation starts from current position
+      for (const L of layers) L.basePos = L.obj.position.clone();
 
-  startExplodeAnimation(!exploded);
-}
-
+      startExplodeAnimation(!exploded);
+    }
 
     function easeInOutCubic(x) {
       return x < 0.5 ? 4*x*x*x : 1 - Math.pow(-2*x + 2, 3) / 2;
@@ -306,14 +301,6 @@ function toggleExplode() {
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.setSize(window.innerWidth, window.innerHeight);
         document.body.appendChild(renderer.domElement);
-
-        /*let floor = new THREE.Mesh(
-          new THREE.PlaneGeometry(200,200),
-          new THREE.MeshStandardMaterial({ color:0x555555 })
-        );
-        floor.rotation.x = -Math.PI/2;
-        floor.receiveShadow = true;
-        scene.add(floor); */
 
         scene.add(new THREE.HemisphereLight(0xffffff,0x444444,1));
         let dirLight = new THREE.DirectionalLight(0xffffff,1);
@@ -372,6 +359,9 @@ function toggleExplode() {
 
         startPosition.set(spawnX, y, spawnZ);
         cameraHolder.position.copy(startPosition);
+
+        // Optional debug: confirm order
+        // console.log("Layer order:", layers.map(l => l.obj.name));
 
       }, undefined, err => {
         loadingSpinner.style.display = 'none';
@@ -480,7 +470,7 @@ function toggleExplode() {
       if (!paused) {
         const currentSpeed = sprinting ? speed.sprint : speed.base;
 
-        // Bewegungsvektor aus analogem Joystick (nur horizontal)
+        // Movement vector from analog joystick (horizontal only)
         const dir = new THREE.Vector3();
         camera.getWorldDirection(dir);
         dir.y = 0; dir.normalize();
@@ -495,7 +485,7 @@ function toggleExplode() {
 
         cameraHolder.position.add(v);
 
-        // Vertikale Bewegung nur über Buttons
+        // Vertical movement only via buttons
         if (flying) {
           cameraHolder.position.y += verticalInput * currentSpeed * delta;
         } else {
