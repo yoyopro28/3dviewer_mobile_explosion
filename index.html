@@ -49,12 +49,13 @@
   <div id="loadingSpinner">Lade Modell ...</div>
 
   <div id="menu">
-    <label for="speedSlider">Bewegungsgeschwindigkeit: <span id="speedValue">5</span></label>
-    <input type="range" min="1" max="30" step="0.1" id="speedSlider" value="5">
-    <div class="slider-tip">(Sprint: <span id="sprintValue">10</span>)</div>
+    <!-- Speed slider now controls a FACTOR (0.2x .. 3x); real speed auto-scales with modelScale -->
+    <label for="speedSlider">Speed-Faktor: <span id="speedValue">0</span></label>
+    <input type="range" min="0.2" max="3" step="0.01" id="speedSlider" value="1">
+    <div class="slider-tip">(Sprint: <span id="sprintValue">0</span>)</div>
 
     <label for="scaleSlider" style="margin-top:1.4em;">Modell-Scale: <span id="scaleValue">1.00</span></label>
-    <input type="range" min="0.01" max="10" step="0.01" id="scaleSlider" value="1">
+    <input type="range" min="0.01" max="10" step="0.01" id="scaleSlider" value="0.04">
     <div class="slider-tip"></div>
 
     <label style="margin-top:1.4em;"><input type="checkbox" id="flyToggle">Flugmodus aktivieren</label>
@@ -85,7 +86,13 @@
     let model, groundMeshes = [];
     let modelScale = 0.04;
 
-    let speed = { base: 80, sprint: 160 };
+    // --- Speed scaling (auto with modelScale) ---
+    // Choose SPEED_AT_SCALE_1 so that for modelScale=0.04, base speed ~ 80 => 80/0.04 = 2000
+    const SPEED_AT_SCALE_1 = 2000; // world-units/sec at modelScale = 1
+    const SPRINT_MULT = 2;
+    let speedFactor = 1.0; // slider controls factor only (0.2x..3x)
+    let speed = { base: 0, sprint: 0 };
+
     let velocityY = 0;
     let flying = false;
     let paused = false;
@@ -150,17 +157,22 @@
       startAppWithModel(MODEL_URL);
     });
 
-    function updateSpeedUI() {
+    function updateScaleUI() { scaleValue.textContent = modelScale.toFixed(2); }
+
+    function applySpeedFromScaleAndFactor() {
+      speed.base = SPEED_AT_SCALE_1 * modelScale * speedFactor;
+      speed.sprint = speed.base * SPRINT_MULT;
+
+      // show actual speeds in UI (not the factor)
       speedValue.textContent = speed.base.toFixed(1);
       sprintValue.textContent = speed.sprint.toFixed(1);
     }
-    function updateScaleUI() { scaleValue.textContent = modelScale.toFixed(2); }
 
     speedSlider.oninput = () => {
-      speed.base = parseFloat(speedSlider.value);
-      speed.sprint = speed.base * 2;
-      updateSpeedUI();
+      speedFactor = parseFloat(speedSlider.value);
+      applySpeedFromScaleAndFactor();
     };
+
     scaleSlider.oninput = () => scaleModel(parseFloat(scaleSlider.value));
 
     resetBtn.onclick = () => resetPosition();
@@ -178,8 +190,12 @@
       if (!model) return;
       model.scale.set(newScale, newScale, newScale);
       modelScale = newScale;
+
       scaleSlider.value = modelScale.toFixed(3);
       updateScaleUI();
+
+      // keep movement speed consistent relative to model scale
+      applySpeedFromScaleAndFactor();
     }
 
     function resetPosition() {
@@ -311,8 +327,12 @@
         mobileControls.style.display = '';
         enableMobileControls();
 
-        updateSpeedUI();
+        // init sliders + derived values
+        scaleSlider.value = modelScale.toFixed(3);
+        speedSlider.value = speedFactor.toFixed(2);
         updateScaleUI();
+        applySpeedFromScaleAndFactor();
+
         animate();
 
         window.addEventListener('resize', ()=>{
@@ -360,8 +380,8 @@
         startPosition.set(spawnX, y, spawnZ);
         cameraHolder.position.copy(startPosition);
 
-        // Optional debug: confirm order
-        // console.log("Layer order:", layers.map(l => l.obj.name));
+        // If you want explodeGap to also scale with modelScale, uncomment:
+        // explodeGap = explodeGap * modelScale;
 
       }, undefined, err => {
         loadingSpinner.style.display = 'none';
