@@ -230,18 +230,16 @@
 function setExplodeTargets(open) {
   if (!layers.length) return;
 
-  const mid = Math.floor(layers.length / 2);
-
   for (let i = 0; i < layers.length; i++) {
-    const d = i - mid;
     if (open) {
-      const offsetY = d * explodeGap;
+      const offsetY = i * explodeGap; // nur nach oben, ab Layer 0
       layers[i].targetPos = layers[i].restPos.clone().add(new THREE.Vector3(0, offsetY, 0));
     } else {
-      layers[i].targetPos = layers[i].restPos.clone(); // <- zurück zur Originalposition
+      layers[i].targetPos = layers[i].restPos.clone(); // zurück
     }
   }
 }
+
 
 
     function startExplodeAnimation(open) {
