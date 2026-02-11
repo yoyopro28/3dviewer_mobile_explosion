@@ -50,8 +50,8 @@
 
   <div id="menu">
     <label for="speedSlider">Bewegungsgeschwindigkeit: <span id="speedValue">30</span></label>
-    <input type="range" min="1" max="300" step="0.1" id="speedSlider" value="5">
-    <div class="slider-tip">(Sprint: <span id="sprintValue">10</span>)</div>
+    <input type="range" min="0" max="30" step="0.1" id="speedSlider" value="20">
+    <div class="slider-tip">(Sprint: <span id="sprintValue">40</span>)</div>
 
     <label for="scaleSlider" style="margin-top:1.4em;">Modell-Scale: <span id="scaleValue">0.02</span></label>
     <input type="range" min="0.001" max="0.08" step="0.0001" id="scaleSlider" value="0.02">
@@ -85,7 +85,7 @@
     let model, groundMeshes = [];
     let modelScale = 0.02;
 
-    let speed = { base: 30, sprint: 80 };
+    let speed = { base:5, sprint: 10 };
     let velocityY = 0;
     let flying = false;
     let paused = false;
@@ -136,7 +136,7 @@
     let cameraTouchActive = false;
     let cameraTouchId = null;
     let lastTouchX = 0, lastTouchY = 0;
-    const touchLookFactor = 0.0027;
+    const touchLookFactor = 0.0033;
 
     // Sprint per Shift-Taste
     window.addEventListener('keydown', e => { if (e.key === 'Shift') sprinting = true; });
