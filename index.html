@@ -49,11 +49,11 @@
   <div id="loadingSpinner">Lade Modell ...</div>
 
   <div id="menu">
-    <label for="speedSlider">Bewegungsgeschwindigkeit: <span id="speedValue">5</span></label>
+    <label for="speedSlider">Bewegungsgeschwindigkeit: <span id="speedValue">30</span></label>
     <input type="range" min="1" max="300" step="0.1" id="speedSlider" value="5">
     <div class="slider-tip">(Sprint: <span id="sprintValue">10</span>)</div>
 
-    <label for="scaleSlider" style="margin-top:1.4em;">Modell-Scale: <span id="scaleValue">1.00</span></label>
+    <label for="scaleSlider" style="margin-top:1.4em;">Modell-Scale: <span id="scaleValue">0.025</span></label>
     <input type="range" min="0.001" max="5" step="0.001" id="scaleSlider" value="0.025">
     <div class="slider-tip"></div>
 
@@ -83,9 +83,9 @@
 
     let camera, scene, renderer;
     let model, groundMeshes = [];
-    let modelScale = 0.0025;
+    let modelScale = 0.025;
 
-    let speed = { base: 80, sprint: 160 };
+    let speed = { base: 30, sprint: 80 };
     let velocityY = 0;
     let flying = false;
     let paused = false;
