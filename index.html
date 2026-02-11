@@ -142,7 +142,7 @@
 
     let speed = { base:5, sprint: 10 };
     let velocityY = 0;
-    let flying = false;
+    let flying = true;
     let paused = false;
     let onGround = false;
     let yaw = 0, pitch = 0;
@@ -212,6 +212,8 @@
     flyToggle.addEventListener('change', e => { flying = e.target.checked; });
 
     window.addEventListener('DOMContentLoaded', () => {
+        flying = true;
+  flyToggle.checked = true;
       loadingSpinner.style.display = 'block';
       startAppWithModel(MODEL_URL);
     });
