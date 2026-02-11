@@ -72,7 +72,39 @@
       <button id="btnDown" style="width:48px;height:48px;border-radius:50%;background:#3fcf8e;color:#222;font-size:1.3em;">↓</button>
       <button id="btnMenu" style="width:48px;height:48px;border-radius:50%;background:#222;color:#3fcf8e;font-size:1.08em;">≡</button>
       <button id="btnExplode" style="width:48px;height:48px;border-radius:50%;background:#222;color:#3fcf8e;font-size:0.95em;">⤢</button>
+      <button id="btnLayers" style="width:48px;height:48px;border-radius:50%;background:#222;color:#3fcf8e;font-size:0.72em;">LAY</button>
     </div>
+  </div>
+
+  <!-- Mobile Layer Panel -->
+  <div id="layerPanel" style="
+    position:fixed; right:12px; top:12px; z-index:60;
+    background:rgba(20,20,20,0.92); color:#fff;
+    padding:12px; border-radius:14px; font-family:sans-serif;
+    width:min(260px, 82vw);
+    display:none;
+    box-shadow:0 16px 64px rgba(0,0,0,0.35);
+  ">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+      <div style="font-weight:700;">Layer</div>
+      <button id="btnCloseLayerPanel" style="
+        background:#222; color:#3fcf8e; border:none; border-radius:10px;
+        padding:6px 10px; font-size:0.95em;
+      ">✕</button>
+    </div>
+
+    <div style="display:flex; gap:10px; margin:10px 0 8px;">
+      <button id="btnLayersAllOn" style="
+        flex:1; background:#3fcf8e; color:#222; border:none;
+        border-radius:10px; padding:8px; font-size:0.95em;
+      ">Alle an</button>
+      <button id="btnLayersAllOff" style="
+        flex:1; background:#222; color:#3fcf8e; border:1px solid #3fcf8e;
+        border-radius:10px; padding:8px; font-size:0.95em;
+      ">Alle aus</button>
+    </div>
+
+    <div id="layerList" style="max-height:44vh; overflow:auto; padding-right:6px;"></div>
   </div>
 
   <script type="module">
@@ -109,6 +141,9 @@
     let explodeAnim = { active:false, t:0, duration:0.6 };
     let explodeGap = 80; // adjust to taste (world units)
 
+    // Layer visibility state (mobile panel toggles)
+    let layerVisibility = new Map(); // name -> boolean
+
     // UI Elements
     const loadingSpinner = document.getElementById('loadingSpinner');
     const menu = document.getElementById('menu');
@@ -131,6 +166,14 @@
     const btnDown = document.getElementById('btnDown');
     const btnMenu = document.getElementById('btnMenu');
     const btnExplode = document.getElementById('btnExplode');
+    const btnLayers = document.getElementById('btnLayers');
+
+    // Mobile layer panel elements
+    const layerPanel = document.getElementById('layerPanel');
+    const layerList = document.getElementById('layerList');
+    const btnCloseLayerPanel = document.getElementById('btnCloseLayerPanel');
+    const btnLayersAllOn = document.getElementById('btnLayersAllOn');
+    const btnLayersAllOff = document.getElementById('btnLayersAllOff');
 
     // Touch‐Look State
     let cameraTouchActive = false;
@@ -187,21 +230,87 @@
       velocityY = 0;
     }
 
+    // ---- Layer Visibility helpers ----
+    function applyLayerVisibility() {
+      if (!layers.length) return;
+      for (const L of layers) {
+        const key = L.obj.name;
+        const isVisible = layerVisibility.has(key) ? layerVisibility.get(key) : true;
+        L.obj.visible = isVisible;
+      }
+    }
+
+    function setAllLayersVisible(visible) {
+      if (!layers.length) return;
+      for (const L of layers) layerVisibility.set(L.obj.name, !!visible);
+      applyLayerVisibility();
+      renderLayerList();
+    }
+
+    function renderLayerList() {
+      if (!layerList) return;
+
+      if (!layers.length) {
+        layerList.innerHTML = '<div style="color:#aaa; padding:10px 0;">Keine Layer gefunden.</div>';
+        return;
+      }
+
+      const rows = layers.map((L, idx) => {
+        const name = L.obj.name || `Layer ${idx+1}`;
+        const checked = layerVisibility.has(name) ? layerVisibility.get(name) : true;
+
+        return `
+          <label style="
+            display:flex; align-items:center; gap:10px;
+            padding:8px 2px; border-bottom:1px solid rgba(255,255,255,0.08);
+          ">
+            <input type="checkbox" data-layer="${name}" ${checked ? 'checked' : ''} style="transform:scale(1.25)">
+            <span style="font-size:0.98em;">${name}</span>
+          </label>
+        `;
+      }).join('');
+
+      layerList.innerHTML = rows;
+
+      layerList.querySelectorAll('input[type="checkbox"][data-layer]').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+          const name = e.target.getAttribute('data-layer');
+          layerVisibility.set(name, e.target.checked);
+          applyLayerVisibility();
+        }, { passive:true });
+      });
+    }
+
+    function openLayerPanel() {
+      if (!model) return;
+      layerPanel.style.display = 'block';
+      renderLayerList();
+    }
+
+    function closeLayerPanel() {
+      layerPanel.style.display = 'none';
+    }
+
+    // prevent layer panel touch from controlling camera
+    ['touchstart','touchmove','touchend'].forEach(evtName => {
+      layerPanel.addEventListener(evtName, (e) => {
+        e.stopPropagation();
+      }, { passive:false });
+    });
+    // -------------------------------
+
     // ---- Explode helpers ----
     function parseLayerIndex(name) {
-      // Accepts L_01, L_1, L_001, L_12, L_12.001 etc.
       const m = /^L_(\d+)/.exec(name || "");
       return m ? parseInt(m[1], 10) : Number.POSITIVE_INFINITY;
     }
 
     function collectLayersFromModel(root) {
-      // We ONLY take nodes that start with "L_" (your Blender naming)
       const candidates = [];
       root.traverse(obj => {
         if (obj.name && obj.name.startsWith("L_")) candidates.push(obj);
       });
 
-      // If none found, fallback to top-level children with geometry
       if (candidates.length === 0) {
         root.children.forEach(ch => {
           let hasGeo = false;
@@ -216,7 +325,7 @@
         box.getCenter(center);
         return {
           obj,
-          restPos: obj.position.clone(),   // closed (original)
+          restPos: obj.position.clone(),
           basePos: obj.position.clone(),
           yCenter: center.y,
           targetPos: obj.position.clone()
@@ -229,11 +338,10 @@
 
       for (let i = 0; i < layers.length; i++) {
         if (open) {
-          // explode from L_01 upwards
           const offsetY = i * explodeGap;
           layers[i].targetPos = layers[i].restPos.clone().add(new THREE.Vector3(0, offsetY, 0));
         } else {
-          layers[i].targetPos = layers[i].restPos.clone(); // back to original
+          layers[i].targetPos = layers[i].restPos.clone();
         }
       }
     }
@@ -250,10 +358,8 @@
     function toggleExplode() {
       if (!model) return;
 
-      // collect once (or re-collect on reload)
       if (!layers.length) layers = collectLayersFromModel(model);
 
-      // animation starts from current position
       for (const L of layers) L.basePos = L.obj.position.clone();
 
       startExplodeAnimation(!exploded);
@@ -339,6 +445,12 @@
         exploded = false;
         toggleExplodeBtn.textContent = "Schichten aufklappen";
 
+        // restore layer visibility across explode/collapse
+        applyLayerVisibility();
+
+        // update layer panel list (in case panel is opened)
+        renderLayerList();
+
         groundMeshes = [];
         gltf.scene.traverse(child => {
           if (child.isMesh) groundMeshes.push(child);
@@ -359,9 +471,6 @@
 
         startPosition.set(spawnX, y, spawnZ);
         cameraHolder.position.copy(startPosition);
-
-        // Optional debug: confirm order
-        // console.log("Layer order:", layers.map(l => l.obj.name));
 
       }, undefined, err => {
         loadingSpinner.style.display = 'none';
@@ -415,10 +524,50 @@
         menu.style.display='block';
       }, { passive:false });
 
+      // Explode already bound above (btnExplode)
+
+      // Layers panel toggle
+      if (btnLayers) {
+        btnLayers.addEventListener('touchend', (e) => {
+          e.preventDefault();
+          if (layerPanel.style.display === 'block') closeLayerPanel();
+          else openLayerPanel();
+        }, { passive:false });
+      }
+
+      if (btnCloseLayerPanel) {
+        btnCloseLayerPanel.addEventListener('touchend', (e) => {
+          e.preventDefault();
+          closeLayerPanel();
+        }, { passive:false });
+      }
+
+      if (btnLayersAllOn) {
+        btnLayersAllOn.addEventListener('touchend', (e) => {
+          e.preventDefault();
+          setAllLayersVisible(true);
+        }, { passive:false });
+      }
+
+      if (btnLayersAllOff) {
+        btnLayersAllOff.addEventListener('touchend', (e) => {
+          e.preventDefault();
+          setAllLayersVisible(false);
+        }, { passive:false });
+      }
+
       // Kamera‐Touch (rechte Bildschirmhälfte)
       renderer.domElement.addEventListener('touchstart', e => {
         for (let touch of e.changedTouches) {
           if (cameraTouchId === null && touch.clientX > window.innerWidth / 2) {
+            // If layer panel is open and touch starts on its area, ignore (extra safety)
+            if (layerPanel.style.display === 'block') {
+              const rect = layerPanel.getBoundingClientRect();
+              if (touch.clientX >= rect.left && touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
+                continue;
+              }
+            }
+
             cameraTouchId = touch.identifier;
             cameraTouchActive = true;
             lastTouchX = touch.clientX;
