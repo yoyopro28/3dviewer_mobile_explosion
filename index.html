@@ -33,21 +33,6 @@
     }
     #menu button:last-child { background:#222; color:#3fcf8e; margin-left:1em;}
 
-    /* Debug / calibration line */
-    #debugLine {
-      margin-top: 1.1em;
-      color:#9aa;
-      font-size:0.92em;
-      line-height:1.25;
-      text-align:left;
-      padding:0.7em 0.9em;
-      border-radius:12px;
-      background: rgba(0,0,0,0.22);
-      user-select:text;
-      -webkit-user-select:text;
-      word-break: break-word;
-    }
-
     #mobileControls { pointer-events:none; }
     #mobileControls * { pointer-events:auto; user-select:none; -webkit-user-select:none; }
 
@@ -64,14 +49,13 @@
   <div id="loadingSpinner">Lade Modell ...</div>
 
   <div id="menu">
-    <label for="speedSlider">Bewegungsgeschwindigkeit: <span id="speedValue">0</span></label>
-    <!-- CALIBRATED: smaller, more usable range -->
-    <input type="range" min="0.5" max="30" step="0.1" id="speedSlider" value="6">
-    <div class="slider-tip">(Sprint: <span id="sprintValue">0</span>) — Auto-Sprint bei starkem Joystick</div>
+    <label for="speedSlider">Bewegungsgeschwindigkeit: <span id="speedValue">5</span></label>
+    <input type="range" min="1" max="300" step="0.1" id="speedSlider" value="5">
+    <div class="slider-tip">(Sprint: <span id="sprintValue">10</span>)</div>
 
-    <label for="scaleSlider" style="margin-top:1.4em;">Modell-Scale: <span id="scaleValue">0</span></label>
+    <label for="scaleSlider" style="margin-top:1.4em;">Modell-Scale: <span id="scaleValue">1.00</span></label>
     <input type="range" min="0.001" max="5" step="0.001" id="scaleSlider" value="0.025">
-    <div class="slider-tip">Tipp: Wenn Speed/Explode komisch wirkt → Scale oder Auto-Gap prüfen</div>
+    <div class="slider-tip"></div>
 
     <label style="margin-top:1.4em;"><input type="checkbox" id="flyToggle">Flugmodus aktivieren</label>
 
@@ -79,9 +63,6 @@
 
     <button id="resetPosition">Zurück zum Start</button>
     <button id="closeMenu">Schließen</button>
-
-    <!-- Debug line for calibration -->
-    <div id="debugLine" style="display:none;"></div>
   </div>
 
   <div id="mobileControls" style="display:none;">
@@ -104,24 +85,7 @@
     let model, groundMeshes = [];
     let modelScale = 0.0025;
 
-    // --- Calibration / "meter-ish" controls ---
-    // These are *world units per second*. If your model is extremely tiny,
-    // speed will feel huge -> use scale slider or auto gap will keep explode reasonable.
-    let speed = { base: 0, sprint: 0 };
-    let sprintMultiplier = 2.0;
-
-    // Auto-sprint on mobile when joystick force is high
-    const AUTO_SPRINT_FORCE = 0.75;
-
-    // Vertical movement (fly) multiplier to keep it controllable
-    const FLY_SPEED_MULT = 0.85;
-
-    // Eye height / ray settings
-    let eyeHeight = 1.6;          // can be re-fit on load if model tiny/huge
-    let groundRayLen = 3.5;       // will be tuned from model size
-    let groundLevel = eyeHeight;  // used for fallback
-    let gravity = -22;            // will be tuned from model size
-
+    let speed = { base: 80, sprint: 160 };
     let velocityY = 0;
     let flying = false;
     let paused = false;
@@ -130,6 +94,7 @@
     let cameraHolder, cameraPitch;
     let sprinting = false;
 
+    let groundLevel = 1.6, gravity = -22;
     let startPosition = new THREE.Vector3(0, groundLevel, 5);
     const clock = new THREE.Clock();
 
@@ -142,7 +107,7 @@
     let layers = []; // [{ obj, restPos, basePos, targetPos }]
     let exploded = false;
     let explodeAnim = { active:false, t:0, duration:0.6 };
-    let explodeGap = 1; // will be auto-calculated from model size
+    let explodeGap = 80; // adjust to taste (world units)
 
     // UI Elements
     const loadingSpinner = document.getElementById('loadingSpinner');
@@ -167,18 +132,13 @@
     const btnMenu = document.getElementById('btnMenu');
     const btnExplode = document.getElementById('btnExplode');
 
-    const debugLine = document.getElementById('debugLine');
-    // show debug line only if you want:
-    const SHOW_DEBUG = true;
-    if (debugLine) debugLine.style.display = SHOW_DEBUG ? 'block' : 'none';
-
     // Touch‐Look State
     let cameraTouchActive = false;
     let cameraTouchId = null;
     let lastTouchX = 0, lastTouchY = 0;
     const touchLookFactor = 0.0027;
 
-    // Sprint per Shift-Taste (desktop)
+    // Sprint per Shift-Taste
     window.addEventListener('keydown', e => { if (e.key === 'Shift') sprinting = true; });
     window.addEventListener('keyup',   e => { if (e.key === 'Shift') sprinting = false; });
 
@@ -190,39 +150,18 @@
       startAppWithModel(MODEL_URL);
     });
 
-    function clamp(v, a, b) { return Math.max(a, Math.min(b, v)); }
-
     function updateSpeedUI() {
       speedValue.textContent = speed.base.toFixed(1);
       sprintValue.textContent = speed.sprint.toFixed(1);
     }
-
-    function updateScaleUI() {
-      // higher precision so it doesn't show 0.00
-      scaleValue.textContent = modelScale.toFixed(4);
-    }
-
-    function syncSpeedFromSlider() {
-      speed.base = parseFloat(speedSlider.value);
-      speed.sprint = speed.base * sprintMultiplier;
-      updateSpeedUI();
-    }
-
-    // Ensure UI and runtime match immediately
-    syncSpeedFromSlider();
-    updateScaleUI();
+    function updateScaleUI() { scaleValue.textContent = modelScale.toFixed(2); }
 
     speedSlider.oninput = () => {
-      syncSpeedFromSlider();
-      updateDebugLine();
+      speed.base = parseFloat(speedSlider.value);
+      speed.sprint = speed.base * 2;
+      updateSpeedUI();
     };
-
-    scaleSlider.oninput = () => {
-      scaleModel(parseFloat(scaleSlider.value));
-      // model size changes -> recalibrate dependent params
-      recalibrateFromModel();
-      updateDebugLine();
-    };
+    scaleSlider.oninput = () => scaleModel(parseFloat(scaleSlider.value));
 
     resetBtn.onclick = () => resetPosition();
     closeMenuBtn.onclick = () => menu.style.display = 'none';
@@ -239,8 +178,7 @@
       if (!model) return;
       model.scale.set(newScale, newScale, newScale);
       modelScale = newScale;
-      // Do NOT round slider value (avoid lying)
-      scaleSlider.value = String(modelScale);
+      scaleSlider.value = modelScale.toFixed(3);
       updateScaleUI();
     }
 
@@ -251,16 +189,19 @@
 
     // ---- Explode helpers ----
     function parseLayerIndex(name) {
+      // Accepts L_01, L_1, L_001, L_12, L_12.001 etc.
       const m = /^L_(\d+)/.exec(name || "");
       return m ? parseInt(m[1], 10) : Number.POSITIVE_INFINITY;
     }
 
     function collectLayersFromModel(root) {
+      // We ONLY take nodes that start with "L_" (your Blender naming)
       const candidates = [];
       root.traverse(obj => {
         if (obj.name && obj.name.startsWith("L_")) candidates.push(obj);
       });
 
+      // If none found, fallback to top-level children with geometry
       if (candidates.length === 0) {
         root.children.forEach(ch => {
           let hasGeo = false;
@@ -275,7 +216,7 @@
         box.getCenter(center);
         return {
           obj,
-          restPos: obj.position.clone(),
+          restPos: obj.position.clone(),   // closed (original)
           basePos: obj.position.clone(),
           yCenter: center.y,
           targetPos: obj.position.clone()
@@ -288,10 +229,11 @@
 
       for (let i = 0; i < layers.length; i++) {
         if (open) {
+          // explode from L_01 upwards
           const offsetY = i * explodeGap;
           layers[i].targetPos = layers[i].restPos.clone().add(new THREE.Vector3(0, offsetY, 0));
         } else {
-          layers[i].targetPos = layers[i].restPos.clone();
+          layers[i].targetPos = layers[i].restPos.clone(); // back to original
         }
       }
     }
@@ -301,19 +243,20 @@
       explodeAnim.active = true;
       explodeAnim.t = 0;
       setExplodeTargets(open);
+
       toggleExplodeBtn.textContent = open ? "Schichten schließen" : "Schichten aufklappen";
     }
 
     function toggleExplode() {
       if (!model) return;
 
+      // collect once (or re-collect on reload)
       if (!layers.length) layers = collectLayersFromModel(model);
 
       // animation starts from current position
       for (const L of layers) L.basePos = L.obj.position.clone();
 
       startExplodeAnimation(!exploded);
-      updateDebugLine();
     }
 
     function easeInOutCubic(x) {
@@ -342,7 +285,7 @@
         scene = new THREE.Scene();
         scene.background = new THREE.Color(0x222);
 
-        camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 5000);
+        camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
 
         cameraPitch = new THREE.Object3D();
         cameraHolder = new THREE.Object3D();
@@ -368,8 +311,7 @@
         mobileControls.style.display = '';
         enableMobileControls();
 
-        // make sure UI and runtime match from start
-        syncSpeedFromSlider();
+        updateSpeedUI();
         updateScaleUI();
         animate();
 
@@ -402,61 +344,29 @@
           if (child.isMesh) groundMeshes.push(child);
         });
 
-        // Recalibrate dependent parameters from actual model size
-        recalibrateFromModel();
-
-        // Spawn at model center, find ground below
         const box = new THREE.Box3().setFromObject(model);
         const spawnX = (box.min.x + box.max.x)/2;
         const spawnZ = (box.min.z + box.max.z)/2;
 
         const ray = new THREE.Raycaster(
-          new THREE.Vector3(spawnX, box.max.y + 9999, spawnZ),
-          new THREE.Vector3(0,-1,0), 0, 2e7
+          new THREE.Vector3(spawnX, 9999, spawnZ),
+          new THREE.Vector3(0,-1,0), 0, 2e4
         );
 
         const hits = ray.intersectObjects(groundMeshes, false);
         let y = groundLevel;
-        if (hits.length) y = hits[0].point.y + eyeHeight;
+        if (hits.length) y = hits[0].point.y + 1.6;
 
         startPosition.set(spawnX, y, spawnZ);
         cameraHolder.position.copy(startPosition);
 
-        updateDebugLine();
+        // Optional debug: confirm order
+        // console.log("Layer order:", layers.map(l => l.obj.name));
 
       }, undefined, err => {
         loadingSpinner.style.display = 'none';
         alert("Fehler beim Laden der Datei!");
       });
-    }
-
-    function recalibrateFromModel() {
-      if (!model) return;
-
-      // Measure scaled model size
-      const box = new THREE.Box3().setFromObject(model);
-      const size = new THREE.Vector3();
-      box.getSize(size);
-
-      // Derive explodeGap from model height (safe even if tiny)
-      // Aim: 2% of height, clamped to a sane range.
-      const h = Math.max(size.y, 1e-6);
-      explodeGap = clamp(h * 0.02, 0.02, 50);
-
-      // Tune ray length based on model size: enough to catch ground when stepping
-      // If the model is tiny, keep a minimum.
-      groundRayLen = clamp(Math.max(eyeHeight * 2.2, h * 0.06), 1.2, 50);
-
-      // Tune gravity: if model is huge, a bit stronger feels better. If tiny, reduce.
-      // This keeps "fall time" in a reasonable range across scales.
-      const scaleFactor = clamp(h / 10, 0.25, 4.0); // relative to a "10 units tall" scene
-      gravity = -22 * scaleFactor;
-
-      // groundLevel fallback uses eyeHeight (keeps camera above ground)
-      groundLevel = eyeHeight;
-
-      // If we are currently exploded and you change scale, keep animation targets consistent
-      if (exploded) setExplodeTargets(true);
     }
 
     function enableMobileControls() {
@@ -503,7 +413,6 @@
       btnMenu.addEventListener('touchend', e => {
         e.preventDefault();
         menu.style.display='block';
-        updateDebugLine();
       }, { passive:false });
 
       // Kamera‐Touch (rechte Bildschirmhälfte)
@@ -549,39 +458,17 @@
       }, { passive: false });
     }
 
-    function updateDebugLine() {
-      if (!SHOW_DEBUG || !debugLine) return;
-
-      let sizeStr = "n/a";
-      let layerCount = layers?.length ?? 0;
-
-      if (model) {
-        const box = new THREE.Box3().setFromObject(model);
-        const size = new THREE.Vector3();
-        box.getSize(size);
-        sizeStr = `${size.x.toFixed(2)} × ${size.y.toFixed(2)} × ${size.z.toFixed(2)}`;
-      }
-
-      debugLine.innerHTML =
-        `Model size: ${sizeStr}<br>` +
-        `Scale: ${modelScale.toFixed(4)} | EyeHeight: ${eyeHeight.toFixed(2)} | RayLen: ${groundRayLen.toFixed(2)}<br>` +
-        `Speed: ${speed.base.toFixed(1)} / Sprint: ${(speed.base*sprintMultiplier).toFixed(1)} (x${sprintMultiplier.toFixed(2)})<br>` +
-        `Gravity: ${gravity.toFixed(1)} | ExplodeGap: ${explodeGap.toFixed(2)} | Layers: ${layerCount}`;
-    }
-
     function animate() {
       requestAnimationFrame(animate);
       if (!renderer || !camera) return;
 
       const delta = clock.getDelta();
 
-      // update explode animation (runs even if paused)
+      // update explode animation (runs even if paused, so it still animates while menu open)
       updateExplodeAnimation(delta);
 
       if (!paused) {
-        // Auto sprint for mobile joystick
-        const sprintingMobile = joystickInput.force > AUTO_SPRINT_FORCE;
-        const currentSpeed = (sprinting || sprintingMobile) ? speed.sprint : speed.base;
+        const currentSpeed = sprinting ? speed.sprint : speed.base;
 
         // Movement vector from analog joystick (horizontal only)
         const dir = new THREE.Vector3();
@@ -594,28 +481,27 @@
         v.addScaledVector(dir,   joystickInput.y * joystickInput.force);
         v.addScaledVector(right, joystickInput.x * joystickInput.force);
         if (v.length() > 1) v.normalize();
-
         v.multiplyScalar(currentSpeed * delta);
+
         cameraHolder.position.add(v);
 
-        // Vertical movement only via buttons (scaled for feel)
+        // Vertical movement only via buttons
         if (flying) {
-          cameraHolder.position.y += verticalInput * currentSpeed * FLY_SPEED_MULT * delta;
-          velocityY = 0; // avoid carrying gravity into non-fly
+          cameraHolder.position.y += verticalInput * currentSpeed * delta;
         } else {
           velocityY += gravity * delta;
           let nextY = cameraHolder.position.y + velocityY * delta;
 
           const downRay = new THREE.Raycaster(
             new THREE.Vector3(cameraHolder.position.x, cameraHolder.position.y, cameraHolder.position.z),
-            new THREE.Vector3(0,-1,0), 0, groundRayLen
+            new THREE.Vector3(0,-1,0), 0, 3.5
           );
 
           const hits = downRay.intersectObjects(groundMeshes, false);
           let surfaceY = groundLevel;
 
           if (hits.length) {
-            surfaceY = hits[0].point.y + eyeHeight;
+            surfaceY = hits[0].point.y + 1.6;
             if (nextY <= surfaceY) {
               nextY = surfaceY;
               velocityY = 0;
