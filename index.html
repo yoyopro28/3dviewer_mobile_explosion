@@ -276,38 +276,51 @@
       renderLayerList();
     }
 
-    function renderLayerList() {
-      if (!layerList) return;
+function renderLayerList() {
+  if (!layerList) return;
 
-      if (!layers.length) {
-        layerList.innerHTML = '<div style="color:#aaa; padding:10px 0;">Keine Layer gefunden.</div>';
-        return;
-      }
+  if (!layers.length) {
+    layerList.innerHTML = '<div style="color:#aaa; padding:10px 0;">Keine Layer gefunden.</div>';
+    return;
+  }
 
-      const rows = layers.map((L, idx) => {
-const objName = L.obj.name || `Layer_${idx+1}`;
-const label = getLayerLabel(L.obj.name, idx);
-const checked = layerVisibility.has(objName) ? layerVisibility.get(objName) : true;
+  const rows = layers
+    .slice()
+    .reverse()
+    .map((L, revIdx) => {
+      const originalIdx = layers.length - 1 - revIdx;
 
-return `
-  <label ...>
-    <input type="checkbox" data-layer="${objName}" ${checked ? 'checked' : ''} ...>
-    <span style="font-size:0.98em;">${label}</span>
-  </label>
-`;
+      const objName = L.obj.name || `Layer_${originalIdx + 1}`;
+      const label = getLayerLabel(L.obj.name, originalIdx);
+      const checked = layerVisibility.has(objName) ? layerVisibility.get(objName) : true;
 
-      }).join('');
+      return `
+        <label style="
+          display:flex; align-items:center; gap:10px;
+          padding:8px 2px; border-bottom:1px solid rgba(255,255,255,0.08);
+        ">
+          <input type="checkbox" data-layer="${objName}" ${checked ? 'checked' : ''} style="transform:scale(1.25)">
+          <span style="font-size:0.98em;">${label}</span>
+        </label>
+      `;
+    })
+    .join('');
 
-      layerList.innerHTML = rows;
+  layerList.innerHTML = rows;
 
-      layerList.querySelectorAll('input[type="checkbox"][data-layer]').forEach(cb => {
-        cb.addEventListener('change', (e) => {
-          const name = e.target.getAttribute('data-layer');
-          layerVisibility.set(name, e.target.checked);
-          applyLayerVisibility();
-        }, { passive:true });
-      });
-    }
+  layerList.querySelectorAll('input[type="checkbox"][data-layer]').forEach(cb => {
+    cb.addEventListener(
+      'change',
+      (e) => {
+        const name = e.target.getAttribute('data-layer');
+        layerVisibility.set(name, e.target.checked);
+        applyLayerVisibility();
+      },
+      { passive: true }
+    );
+  });
+}
+
 
     function openLayerPanel() {
       if (!model) return;
