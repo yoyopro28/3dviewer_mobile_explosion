@@ -294,12 +294,21 @@
       }
     }
 
-    function setAllLayersVisible(visible) {
-      if (!layers.length) return;
-      for (const L of layers) layerVisibility.set(L.obj.name, !!visible);
-      applyLayerVisibility();
-      renderLayerList();
-    }
+function setAllLayersVisible(visible) {
+  if (!layers.length) return;
+  for (const L of layers) layerVisibility.set(L.obj.name, !!visible);
+  applyLayerVisibility();
+
+  if (exploded) {
+    for (const L of layers) L.basePos = L.obj.position.clone();
+    explodeAnim.active = true;
+    explodeAnim.t = 0;
+    setExplodeTargets(true);
+  }
+
+  renderLayerList();
+}
+
 
     function renderLayerList() {
       if (!layerList) return;
@@ -338,7 +347,17 @@
           'change',
           (e) => {
             const name = e.target.getAttribute('data-layer');
-            layerVisibility.set(name, e.target.checked);
+layerVisibility.set(name, e.target.checked);
+applyLayerVisibility();
+
+if (exploded) {
+  // neue Abstände ohne "Lücken" berechnen + smooth animieren
+  for (const L of layers) L.basePos = L.obj.position.clone();
+  explodeAnim.active = true;
+  explodeAnim.t = 0;
+  setExplodeTargets(true);
+}
+
             applyLayerVisibility();
           },
           { passive: true }
@@ -437,18 +456,35 @@
       }).sort((a,b) => parseLayerIndex(a.obj.name) - parseLayerIndex(b.obj.name));
     }
 
-    function setExplodeTargets(open) {
-      if (!layers.length) return;
+function isLayerVisibleByState(L) {
+  const key = L.obj.name;
+  return layerVisibility.has(key) ? layerVisibility.get(key) : true;
+}
 
-      for (let i = 0; i < layers.length; i++) {
-        if (open) {
-          const offsetY = i * explodeGap;
-          layers[i].targetPos = layers[i].restPos.clone().add(new THREE.Vector3(0, offsetY, 0));
-        } else {
-          layers[i].targetPos = layers[i].restPos.clone();
-        }
+function setExplodeTargets(open) {
+  if (!layers.length) return;
+
+  let visibleIndex = 0;
+
+  for (let i = 0; i < layers.length; i++) {
+    const L = layers[i];
+    const isVisible = isLayerVisibleByState(L);
+
+    if (open) {
+      if (isVisible) {
+        const offsetY = visibleIndex * explodeGap;
+        visibleIndex++;
+        L.targetPos = L.restPos.clone().add(new THREE.Vector3(0, offsetY, 0));
+      } else {
+        // Unsichtbare Layer "zählen" nicht und bleiben an der Rest-Position
+        L.targetPos = L.restPos.clone();
       }
+    } else {
+      L.targetPos = L.restPos.clone();
     }
+  }
+}
+
 
     function startExplodeAnimation(open) {
       exploded = open;
