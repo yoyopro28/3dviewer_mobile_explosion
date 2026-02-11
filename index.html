@@ -54,7 +54,7 @@
     <div class="slider-tip">(Sprint: <span id="sprintValue">10</span>)</div>
 
     <label for="scaleSlider" style="margin-top:1.4em;">Modell-Scale: <span id="scaleValue">1.00</span></label>
-    <input type="range" min="0.001" max="5" step="0.001" id="scaleSlider" value="1">
+    <input type="range" min="0.001" max="5" step="0.001" id="scaleSlider" value="0.025">
     <div class="slider-tip"></div>
 
     <label style="margin-top:1.4em;"><input type="checkbox" id="flyToggle">Flugmodus aktivieren</label>
@@ -83,7 +83,7 @@
 
     let camera, scene, renderer;
     let model, groundMeshes = [];
-    let modelScale = 0.01;
+    let modelScale = 0.0025;
 
     let speed = { base: 80, sprint: 160 };
     let velocityY = 0;
